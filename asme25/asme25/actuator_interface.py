@@ -9,10 +9,21 @@ from sensor_msgs.msg import JointState
 import board
 import busio
 import adafruit_pca9685
+from adafruit_servokit import ServoKit
+from time import sleep
 
 i2c = busio.I2C(board.SCL, board.SDA)
 pca = adafruit_pca9685.PCA9685(i2c)
 
+
+# Set channels to the number of servo channels on your kit.
+# 8 for FeatherWing, 16 for Shield/HAT/Bonnet.
+kit = ServoKit(channels=16)
+
+kit.servo[0].angle = 175
+sleep(1)
+kit.servo[0].angle = 45
+sleep(1)
 
 """
 read sensor i2c data
