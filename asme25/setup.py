@@ -13,10 +13,10 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='boozer',
-    maintainer_email='boozer@todo.todo',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    maintainer='Gold Rush Robotics',
+    maintainer_email='goldrushrobotics@gmail.com',
+    description='Contains Nodes for the 2024-2025 ASME EFx SDC Robot',
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
