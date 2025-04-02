@@ -1,0 +1,41 @@
+name: Bug Report
+description: File a bug report.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: what
+    attributes:
+      label: Issue
+      description: What is wrong
+      placeholder: It's not working...
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: Steps to Reproduce
+      description: What happened to make the issue appear? The more detailed your breakdown is the easier it is to reproduce/debug/fix
+      placeholder: |
+        1. Turned on robot
+        2. Robot moved
+        3. Error happened
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is it that this issue gets fixed? (Take your best guess)
+      options:
+        - High (blocking major development)
+        - Medium
+        - Low
+    validations:
+      required: true
+  - type: textarea
+    id: misc
+    attributes:
+      label: Other Information
+      description: Attach other useful information (i.e., a video of what happened) here. The more info we have the easier it should be to fix.
+      placeholder: "Here is a video of what is happening: (you can click here and drag and drop or paste to upload media)"
