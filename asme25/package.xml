@@ -3,9 +3,9 @@
 <package format="3">
   <name>asme25</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="boozer@todo.todo">boozer</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Contains Nodes for the 2024-2025 ASME EFx SDC Robot</description>
+  <maintainer email="goldrushrobotics@gmail.com">GRR</maintainer>
+  <license>MIT</license>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

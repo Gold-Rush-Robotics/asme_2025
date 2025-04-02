@@ -1,0 +1,8 @@
+This is the repo for Gold Rush Robotics 2024-2025 ASME EFx SDC Robot.
+
+This should be cloned into the src folder of a ROS workspace
+
+The Target ROS distro for this is Jazzy
+
+Current Packages included:
+- asme25: main package that will have game controller and computer vision and actuator interfaces
