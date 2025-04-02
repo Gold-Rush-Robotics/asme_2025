@@ -27,7 +27,6 @@ jobs:
       - name: Lint
         run: |
           source /opt/ros/jazzy/setup.bash
-          cd ros2_ws
           colcon lint --packages-select
 
   build:
@@ -51,7 +50,6 @@ jobs:
       - name: Build
         run: |
           source /opt/ros/jazzy/setup.bash
-          cd ros2_ws
           colcon build --symlink-install
 
   test:
@@ -75,5 +73,4 @@ jobs:
       - name: Test
         run: |
           source /opt/ros/jazzy/setup.bash
-          cd ros2_ws
           colcon test --packages-select --event-handlers console_cohesion+
