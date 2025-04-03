@@ -1,4 +1,4 @@
-# In asme25_msgs/Marbles.msg
+Header header
 uint8[] marbles
 
 uint8 BRASS = 1

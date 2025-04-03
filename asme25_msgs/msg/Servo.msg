@@ -1,4 +1,4 @@
-# In asme25_msgs/Servo.msg
+Header header
 uint8[] servo
 
 uint8 LEFT = 1
