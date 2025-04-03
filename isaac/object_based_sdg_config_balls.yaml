@@ -1,0 +1,98 @@
+launch_config:
+  renderer: RaytracedLighting
+  headless: true
+env_url: ''
+working_area_size:
+- 0.5
+- 0.5
+- 0.5
+rt_subframes: 4
+num_frames: 10000
+num_cameras: 3
+disable_render_products_between_captures: false
+simulation_duration_between_captures: 0.0
+resolution:
+- 640
+- 480
+camera_look_at_target_offset: 0.01
+camera_distance_to_target_min_max:
+  - .3
+  - .3
+writer_type: BasicWriter
+writer_kwargs:
+  output_dir: /home/philip/projects/grr/synthetic_data_generation/10000_img_run/
+  rgb: true
+  bounding_box_2d_tight: true
+  use_common_output_dir: true
+labeled_assets_and_properties:
+  - url: /home/philip/projects/grr/synthetic_data_generation/quarter-brass.usd
+    label: brass
+    count: 7
+    floating: true
+    randomize_scale:
+      - 0.0254
+      - 0.0254
+  - url: /home/philip/projects/grr/synthetic_data_generation/half-brass.usd
+    label: brass
+    count: 7
+    floating: true
+    randomize_scale:
+      - 0.0254
+      - 0.0254
+  - url: /home/philip/projects/grr/synthetic_data_generation/quarter-nylon.usd
+    label: nylon
+    count: 7
+    floating: true
+    randomize_scale:
+      - 0.0254
+      - 0.0254
+  - url: /home/philip/projects/grr/synthetic_data_generation/half-nylon.usd
+    label: nylon
+    count: 7
+    floating: true
+    randomize_scale:
+      - 0.0254
+      - 0.0254
+  - url: /home/philip/projects/grr/synthetic_data_generation/quater-steel.usd
+    label: steel
+    count: 7
+    floating: true
+    randomize_scale:
+      - 0.0254
+      - 0.0254
+  - url: /home/philip/projects/grr/synthetic_data_generation/half-steel.usd
+    label: steel
+    count: 7
+    floating: true
+    randomize_scale:
+      - 0.0254
+      - 0.0254
+shape_distractors_types:
+- capsule
+- cone
+- cylinder
+- cube
+shape_distractors_scale_min_max:
+  - 0.04
+  - 0.1
+shape_distractors_num: 5
+mesh_distractors_urls:
+- /Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxD_04_1847.usd
+- /Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_01_414.usd
+- /Isaac/Environments/Simple_Warehouse/Props/S_TrafficCone.usd
+- /Isaac/Environments/Simple_Warehouse/Props/S_WetFloorSign.usd
+- /Isaac/Environments/Simple_Warehouse/Props/SM_BarelPlastic_B_03.usd
+- /Isaac/Environments/Office/Props/SM_Board.usd
+- /Isaac/Environments/Office/Props/SM_Book_03.usd
+- /Isaac/Environments/Office/Props/SM_Book_34.usd
+- /Isaac/Environments/Office/Props/SM_BookOpen_01.usd
+- /Isaac/Environments/Office/Props/SM_Briefcase.usd
+- /Isaac/Environments/Office/Props/SM_Extinguisher.usd
+- /Isaac/Environments/Hospital/Props/SM_GasCart_01b.usd
+- /Isaac/Environments/Hospital/Props/SM_MedicalBag_01a.usd
+- /Isaac/Environments/Hospital/Props/SM_MedicalBox_01g.usd
+- /Isaac/Environments/Hospital/Props/SM_Toweldispenser_01a.usd
+mesh_distractors_scale_min_max:
+  - 0.04
+  - 0.1
+mesh_distractors_num: 5
