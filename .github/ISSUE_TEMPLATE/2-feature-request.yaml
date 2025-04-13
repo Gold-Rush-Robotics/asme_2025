@@ -1,0 +1,24 @@
+name: Feature Request
+description: Request something to be added to the robot
+title: "[Request] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Request
+      description: What do you want to add/request?
+      placeholder: I need the robot to do this...
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is it that this gets implemented? (Take your best guess)
+      options:
+        - High (blocking major development)
+        - Medium
+        - Low
+    validations:
+      required: true

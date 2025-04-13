@@ -3,7 +3,7 @@
 <package format="3">
   <name>asme25</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Contains Nodes for the 2024-2025 ASME EFx SDC Robot</description>
   <maintainer email="goldrushrobotics@gmail.com">GRR</maintainer>
   <license>MIT</license>
 
