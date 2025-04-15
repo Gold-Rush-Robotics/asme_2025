@@ -1,9 +1,9 @@
 import rclpy
-import sensor_msgs 
+import sensor_msgs
 from rclpy.node import Node
-
-from std_msgs.msg import String
 from sensor_msgs.msg import JointState
+from std_msgs.msg import String
+
 
 # state of marbles
 # find marble path
@@ -17,13 +17,20 @@ class GameController(Node):
         self.joint_state_subscriber = self.create_subscription(JointState, 'robot_joints/states', 10)
         self.hmi_start_stop = self.create_subscription(String, 'hmi_start_stop', self.on_start, 10)
     
-
-    """
-    Processes st messages sent by the HMI
-    """
-    def on_start(self, msg: String) -> None:
-        pass
-
+    def on_start(self, msg: str) -> None:
+        """
+        Processes messages from the `hmi_start_stop` topic.
+        
+        Args:
+            msg (str): The message sent by the HMI. Can currently be either "start" or "stop".
+        """
+        
+        if msg == "start":
+            # Run entrypoint for the ASME program
+            pass
+        if msg == "stop":
+            # Stop all tasks happening in the robot right now
+            pass
 
 def main(args=None):
     rclpy.init(args=args)
