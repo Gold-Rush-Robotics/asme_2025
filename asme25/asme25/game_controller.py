@@ -20,7 +20,7 @@ SERVO_PATHS = {
 
 # state of marbles
 # find marble path
-# communicate to serrvos - correct position
+# communicate to servos - correct position
 class GameController(Node):
     def __init__(self):
         super().__init__('game_controller')
