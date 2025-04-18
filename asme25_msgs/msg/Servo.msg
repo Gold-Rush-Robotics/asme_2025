@@ -1,5 +1,4 @@
-Header header
-uint8[] servo
-
-uint8 LEFT = 1
-uint8 RIGHT = 2
+std_msgs/Header header
+string name
+string position
+string speed
