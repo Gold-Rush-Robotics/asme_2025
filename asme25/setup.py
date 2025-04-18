@@ -11,7 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'asme2025_msgs'],
     zip_safe=True,
     maintainer='Gold Rush Robotics',
     maintainer_email='goldrushrobotics@gmail.com',
@@ -22,7 +22,8 @@ setup(
         'console_scripts': [
             "actuator_interface = asme25.actuator_interface:main",
             "game_controller = asme25.game_controller:main",
-            "computer_vision = asme25.computer_vision:main"
+            "computer_vision = asme25.computer_vision:main",
+            "testing = asme25.testing:main"
         ],
     },
 )
