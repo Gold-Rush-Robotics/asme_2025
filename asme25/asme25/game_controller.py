@@ -25,7 +25,7 @@ class GameController(Node):
     def __init__(self):
         super().__init__('game_controller')
         self.servo_commands_publisher = self.create_publisher(Servo, 'servo_commands', 10)
-        self.marble_subscriber = self.create_subscription(Marbles, 'marbles', self.marble_callback,  10)
+        self.marble_subscriber = self.create_subscription(Marbles, 'marbles', self.marble_callback, 10)
         self.hmi_start_stop = self.create_subscription(String, 'hmi_start_stop', self.on_start, 10)
         self.solenoid_command_publsiher = self.create_publisher(Int64, 'solenoid_commands', 10)
     
