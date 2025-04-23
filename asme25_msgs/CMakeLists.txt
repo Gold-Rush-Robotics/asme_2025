@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Servo.msg"
   "msg/SorterServo.msg"
   "msg/Motor.msg"
+  "srv/Reset.srv"
   DEPENDENCIES std_msgs
 )
 
