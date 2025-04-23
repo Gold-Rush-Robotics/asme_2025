@@ -2,25 +2,20 @@ import rclpy
 from rclpy.node import Node
 from rclpy.time import Duration
 
-from time import sleep
+from asme25_msgs.msg import Servo as ServoMsg, Motor as MotorMsg, SorterServo as SorterServoMsg, Marble as MarbleMsg
+from std_msgs.msg import Int8
 
 from adafruit_blinka.board.raspberrypi import raspi_5
-
-
-from digitalio import DigitalInOut, Direction, Pin
 
 import board
 import busio
 from adafruit_tcs34725 import TCS34725
 from adafruit_tca9548a import TCA9548A
 from adafruit_pca9685 import PCA9685
-
-from asme25_msgs.msg import Servo as ServoMsg, Motor as MotorMsg, SorterServo as SorterServoMsg, Marble as MarbleMsg
-from std_msgs.msg import Int8
+from digitalio import DigitalInOut, Direction, Pin
 
 import numpy as np
-
-
+from time import sleep
 
 class ColorSensor:
     def __init__(self, whiteLightPin: Pin, blueLightPin: Pin, offset: float, i2c: busio.I2C):
@@ -79,47 +74,163 @@ class ColorSensor:
         green = min(green, 255)
         blue = min(blue, 255)
         return (red, green, blue, 0)
+
+class Servo:
+    allServos = []
+    step = 10
+    speedDelay = {
+        "fast": .001,
+        "medium": .005,
+        "slow": .01
+    }
+
+    def __init__(self, pin: int, namedPositions, pca: PCA9685):
+        self.pin = pin
+        self.namedPositions = namedPositions
+        Servo.allServos.append(self)
+        self.lastPosition = self.getPos("home")
+        self.pca = pca
+
+    def getPos(self, name: str) -> int:
+        pos = self.namedPositions[name]
+        if type(pos) is int:
+            return pos
+        else:
+            return self.getPos(pos)
         
+    def moveManual(self, pos: int):
+        self.lastPosition = pos
+        # print(f"Moving servo to {pos}")
+        self.pca.channels[self.pin].duty_cycle = pos
+    
+    def move(self, position: str):
+        self.moveManual(self.getPos(position))
+
+    def moveSmooth(self, position: str, speed: str):
+        goal = self.getPos(position)
+        step = Servo.step
+        if goal < self.lastPosition:
+            step = -step
+        
+        for pos in range(self.lastPosition + step, goal + step, step):
+            self.moveManual(pos)
+            sleep(Servo.speedDelay[speed])
+
+    def moveAll(position: str):
+        for servo in Servo.allServos:
+            servo.move(position)
+
+class Motor:
+    allMotors = []
+
+    def __init__(self, pwmPin: int, drivePin: int, pca: PCA9685):
+        self.pwmPin = pwmPin
+        self.drivePin = drivePin
+        self.lastDirection = -1
+        self.pca = pca
+
+        Motor.allMotors.append(self)
+        
+    def setSpeed(self, speed: int, direction: int):
+        self.pca.channels[self.drivePin].duty_cycle = direction
+        self.lastDirection = direction
+        self.pca.channels[self.pwmPin].duty_cycle = speed
+
+    def stop(self):
+        self.pca.channels[self.pwmPin].duty_cycle = 0
+
+    def stopAll(pca: PCA9685):
+        for motor in Motor.allMotors:
+            pca.channels[motor.pwmPin].duty_cycle = 0
+
+class LimitSwitch:
+    # wire one side of limit switch to ground, other side to gpioPin
+    def __init__(self, gpioPin: int):
+        self.button = DigitalInOut(gpioPin)
+        self.button.direction = Direction.INPUT
+
+    def isPressed(self):
+        return self.button.value
+
+class Sorter:
+    # For both servos on the motor:
+    # - pin is the pin it's connected to on the PCA
+    # - left is the degrees to move the servo to send marbles left
+    # - right is the degrees to move the servo to send marbles right
+    def __init__(self, pin1: int, left1: int, right1: int, pin2: int, left2: int, right2: int, pca:PCA9685):
+        self.one = Servo(pin1, {"home": "right", "left": left1, "right": right1}, pca)
+        self.two = Servo(pin2, {"home": "right", "left": left2, "right": right2}, pca)
+
+    # Move the sorter to a bin between 1 and 3. One is the leftmost, 3 is the rightmost.
+    def setBin(self, binNum: int):
+        match binNum:
+            case 1:
+                self.one.move("left")
+            case 2:
+                self.one.move("right")
+                self.two.move("left")
+            case 3:
+                self.one.move("right")
+                self.two.move("right")
 
 
+#object creation
+#wwerrVertical = Motor(0, 1)
+#wwerrHorizontal = Servo(11, {"home": "min", "min": 7250, "max": 9700, "shakingForward": 8300, "shakingBack": 7600}) #tuned 4/10
+#wwerrAngle = Servo(15, {"home": "holding", "holding": 4100, "dumping": 5000, "shaking": 4700, "tiltUp":3800}) #tuned 4/10
+                  
 class HardwareInterface(Node):
     def __init__(self):
         super().__init__('hardware_interface')
 
-        I2C = busio.I2C(board.SCL, board.SDA)
-        TCA = TCA9548A(I2C)
-        PCA = PCA9685(TCA[0])
-        PCA.frequency = 60
+        self.I2C = busio.I2C(board.SCL, board.SDA)
+        self.TCA = TCA9548A(self.I2C)
+        self.PCA = PCA9685(self.TCA[0])
+        self.PCA.frequency = 60
         
         if True: #half inch sorting
             self.tmr_half_color_sensor = self.create_timer(1/30, self.half_color_sensor_tmr_callback)
             self.half_color_sensor_state = 0
             self.half_color_sensor_state_entered = self.get_clock().now()
-            self.half_color = ColorSensor(whiteLightPin=raspi_5.D26, blueLightPin=raspi_5.D16, offset=27.331479324459327, i2c=TCA[7])
+            self.half_color = ColorSensor(whiteLightPin=raspi_5.D26, blueLightPin=raspi_5.D16, offset=33.331479324459327, i2c=self.TCA[7])
             self.half_pub = self.create_publisher(MarbleMsg, "half/new_marble", 10)
+            self.half_sorter = Sorter(3, 5700, 6550, 6, 5000, 6500, self.PCA)
+
 
         if True: #quarter inch sorting
             self.tmr_quarter_color_sensor = self.create_timer(1/30, self.quarter_color_sensor_tmr_callback)
             self.quarter_color_sensor_state = 0
             self.quarter_color_sensor_state_entered = self.get_clock().now()
-            self.quarter_color = ColorSensor(whiteLightPin=raspi_5.D6, blueLightPin=raspi_5.D5, offset=35.331479324459327, i2c=TCA[6])
+            self.quarter_color = ColorSensor(whiteLightPin=raspi_5.D6, blueLightPin=raspi_5.D5, offset=33.331479324459327, i2c=self.TCA[6])
             self.quarter_pub = self.create_publisher(MarbleMsg, "quarter/new_marble", 10)
-        
+            self.quarter_sorter = Sorter(14, 7450, 8200, 12, 6500, 7600, self.PCA)
+
         if True: # Solenoid stuff 
             self.solinoid_sub = self.create_subscription(Int8, "robot_joints/solenoid_commands", self.solinoid_msg_callback, 10)
             self.solinoid_control_tmr = self.create_timer(1/30, self.solinoid_tmr_callback)
             self.solinoid_states = [0, 0]
-            self.solinoids = [DigitalInOut(raspi_5.D25), DigitalInOut(raspi_5.D21)]
+            self.solinoids = [DigitalInOut(raspi_5.D25), DigitalInOut(raspi_5.D24)]
             self.solinoid_times = [self.get_clock().now(), self.get_clock().now()]
             for sol in self.solinoids:
                 sol.direction = Direction.OUTPUT
+        
+        self.sorting_servo_sub = self.create_subscription(SorterServoMsg, "robot_joints/sorter_servos", self.sorter_servo_callback, 10)
+
         # Servo
         # Limit Switches
         # Motor
         # TOF 
         
+    def sorter_servo_callback(self, msg: SorterServoMsg):
+        if msg.name == "halfInch":
+            self.half_sorter.setBin(msg.bin)
+        elif msg.name == "quarterInch":
+            self.quarter_sorter.setBin(msg.bin)
+        else:
+            print(f"Sent sorter servo command for nonexistant sorter servo {msg.name}")
+
+    
     def half_color_sensor_tmr_callback(self):
-        print(f"Half state: {self.half_color_sensor_state}")
         match self.half_color_sensor_state:
             case 0:
                 self.half_color.setBlueLightOn(True)
@@ -133,11 +244,10 @@ class HardwareInterface(Node):
                     self.half_color_sensor_state_entered = self.get_clock().now()
             case 2:
                 _, _, blue, valid = self.half_color.get_rgb()
-                print(f"Half - {blue} {valid}")
-                
+                print(f"half - blue - {blue}")
                 if valid < 0: return
                 
-                if blue >= 255:
+                if blue >= 100:
                     self.get_logger().debug("Half - No Marble")
                     self.half_color_sensor_state = 0
                     self.half_color_sensor_state_entered = self.get_clock().now()
@@ -190,17 +300,17 @@ class HardwareInterface(Node):
                 self.quarter_color_sensor_state += 1
                 self.quarter_color_sensor_state_entered = self.get_clock().now()
             case 1: #wait 0.3 seconds
-                if self.get_clock().now() - self.quarter_color_sensor_state_entered > Duration(seconds=0.3):
+                if self.get_clock().now() - self.quarter_color_sensor_state_entered > Duration(seconds=1.5):
                     self.quarter_color_sensor_state += 1
                     self.quarter_color_sensor_state_entered = self.get_clock().now()
             case 2: #check for blue
                 _, _, blue, valid = self.quarter_color.get_rgb()
                 if valid < 0: return
-                if blue >= 255:
+                if blue >= 140:
                     self.get_logger().debug("Quarter - No Marble")
                     self.quarter_color_sensor_state = 0
                     self.quarter_color_sensor_state_entered = self.get_clock().now()
-                elif blue >= 40:
+                elif blue >= 65:
                     # Publish Nylon somehow
                     self.get_logger().debug("Quarter - Nylon")
                     self.quarter_pub.publish(MarbleMsg(kind=MarbleMsg.NYLON))
@@ -214,7 +324,7 @@ class HardwareInterface(Node):
                 self.quarter_color_sensor_state += 1
                 self.quarter_color_sensor_state_entered = self.get_clock().now()
             case 4: #wait 0.3 seconds
-                if self.get_clock().now() - self.quarter_color_sensor_state_entered > Duration(seconds=0.3):
+                if self.get_clock().now() - self.quarter_color_sensor_state_entered > Duration(seconds=1):
                     self.quarter_color_sensor_state += 1
                     self.quarter_color_sensor_state_entered = self.get_clock().now()
             case 5: #detect metals
@@ -229,8 +339,8 @@ class HardwareInterface(Node):
                 Pr = 0.713 * (rgb[0] - Y)
                 
                 normal = np.array([ 0.31656525, -0.96532631,  0.81247134 ])
-                
                 decision = normal @ np.array([Y, Pr, Pb]) - self.quarter_color.offset
+
                 if decision < 0:
                     self.quarter_pub.publish(MarbleMsg(kind=MarbleMsg.BRASS))
                 else:
@@ -276,9 +386,8 @@ class HardwareInterface(Node):
                             self.quarter_color_sensor_state_entered = self.get_clock().now()
                     self.solinoid_states[i] = 0
 
-                    
-
-                
+    
+    
 def main(args=None):
     rclpy.init(args=args)
     rclpy.spin(HardwareInterface())

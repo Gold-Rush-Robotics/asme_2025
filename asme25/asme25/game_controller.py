@@ -9,9 +9,9 @@ from asme25_msgs.msg import Servo as ServoMsg, Marble as MarbleMsg, Motor as Mot
 HALF_INCH_SOLENOID_ID = 0
 QUARTER_INCH_SOLENOID_ID = 1
 MARBLE_MSG_TO_BIN = {
-    MarbleMsg.BRASS: 0,
+    MarbleMsg.BRASS: 3,
     MarbleMsg.NYLON: 1,
-    MarbleMsg.STEEL: 1,
+    MarbleMsg.STEEL: 2,
 }
 MARBLE_MSG_TO_NAME = {
     MarbleMsg.BRASS: "brass",
@@ -46,14 +46,14 @@ class GameController(Node):
             print("WARNING sent command to activate nonexistant solenoid. Half=0, Quarter=1")
     
     def onQuarterInchMarble(self, msg):
-        # print(f"Detected quarter-inch marble {MARBLE_MSG_TO_NAME[msg.kind]}")
+        print(f"Detected quarter-inch marble {MARBLE_MSG_TO_NAME[msg.kind]}")
 
         sendMsg = SorterServoMsg()
         sendMsg.name = "quarterInch"
         sendMsg.bin = MARBLE_MSG_TO_BIN[msg.kind]
         self.sorterServoCommandsPub.publish(sendMsg)
 
-        # self.moveSolenoid(QUARTER_INCH_SOLENOID_ID)
+        self.moveSolenoid(QUARTER_INCH_SOLENOID_ID)
 
     def onHalfInchMarble(self, msg):
         print(f"Detected half-inch marble {MARBLE_MSG_TO_NAME[msg.kind]}")
