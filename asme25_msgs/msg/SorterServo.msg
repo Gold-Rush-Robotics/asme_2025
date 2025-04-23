@@ -1,3 +1,3 @@
 std_msgs/Header header
-string servo
+string name
 uint8 bin

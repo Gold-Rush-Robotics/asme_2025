@@ -1,63 +1,81 @@
 import rclpy
-import sensor_msgs 
 from rclpy.node import Node
 
-from std_msgs.msg import String, Int64
-from sensor_msgs.msg import JointState
-from asme25_msgs.msg import Servo , Marbles
-
-from enum import Enum
+from std_msgs.msg import String as StringMsg, Empty as EmptyMsg, Int8 as Int8Msg
+from asme25_msgs.msg import Servo as ServoMsg, Marble as MarbleMsg, Motor as MotorMsg, SorterServo as SorterServoMsg
 
 
 
-SERVO_PATHS = {
-    #paths are temp right now
-    Marbles.BRASS: [Servo.LEFT, Servo.LEFT, Servo.LEFT],
-    Marbles.NYLON: [Servo.LEFT, Servo.LEFT, Servo.LEFT],
-    Marbles.STEEL: [Servo.LEFT, Servo.LEFT, Servo.LEFT]
+HALF_INCH_SOLENOID_ID = 0
+QUARTER_INCH_SOLENOID_ID = 1
+MARBLE_MSG_TO_BIN = {
+    MarbleMsg.BRASS: 0,
+    MarbleMsg.NYLON: 1,
+    MarbleMsg.STEEL: 1,
+}
+MARBLE_MSG_TO_NAME = {
+    MarbleMsg.BRASS: "brass",
+    MarbleMsg.NYLON: "nylon",
+    MarbleMsg.STEEL: "steel",
 }
 
 
-# state of marbles
-# find marble path
-# communicate to servos - correct position
+
 class GameController(Node):
     def __init__(self):
         super().__init__('game_controller')
-        self.servo_commands_publisher = self.create_publisher(Servo, 'servo_commands', 10)
-        self.marble_subscriber = self.create_subscription(Marbles, 'marbles', self.marble_callback, 10)
-        self.hmi_start_stop = self.create_subscription(String, 'hmi_start_stop', self.on_start, 10)
-        self.solenoid_command_publsiher = self.create_publisher(Int64, 'solenoid_commands', 10)
+
+        self.hmiStartStopSub = self.create_subscription(StringMsg, 'hmi_start_stop', self.on_start, 10)
+        # self.servoStatesSub = self.create_subscription(ServoMsg, 'robot_joints/servo_states', lambda: (), 10)
+        # self.motorStatesSub = self.create_subscription(MotorMsg, 'robot_joints/motor_states', lambda: (), 10)
+        self.quarterInchSub = self.create_subscription(MarbleMsg, "quarter/new_marble", self.onQuarterInchMarble, 10)
+        self.halfInchSub = self.create_subscription(MarbleMsg, "half/new_marble", self.onHalfInchMarble, 10)
+
+        self.resetPub = self.create_publisher(EmptyMsg, "robot_joints/reset", 10)
+        self.servoCommandsPub = self.create_publisher(ServoMsg, 'robot_joints/servo_commands',10)
+        self.motorCommandsPub = self.create_publisher(MotorMsg, 'robot_joints/motors',10)
+        self.solenoidCommandsPub = self.create_publisher(Int8Msg, 'robot_joints/solenoid_commands', 10)
+        self.sorterServoCommandsPub = self.create_publisher(SorterServoMsg, 'robot_joints/sorter_servos', 10)
     
-    def marble_callback(self, msg):
-        """"
-        when we get marbles we need to check for new marbles
-        """
-        marble = msg[0]
-        path = SERVO_PATHS[marble]
-        self.servo_commands_publisher.publish(path.value)
-        # TODO: Change 1 to the ID of the solenoid to move
-        self.solenoid_command_publsiher.publish(1)
+    def moveSolenoid(self, solenoid):
+        if(solenoid == 0 or solenoid == 1):
+            msg = Int8Msg()
+            msg.data = solenoid
+            self.solenoidCommandsPub.publish(msg)
+        else:
+            print("WARNING sent command to activate nonexistant solenoid. Half=0, Quarter=1")
+    
+    def onQuarterInchMarble(self, msg):
+        # print(f"Detected quarter-inch marble {MARBLE_MSG_TO_NAME[msg.kind]}")
+
+        sendMsg = SorterServoMsg()
+        sendMsg.name = "quarterInch"
+        sendMsg.bin = MARBLE_MSG_TO_BIN[msg.kind]
+        self.sorterServoCommandsPub.publish(sendMsg)
+
+        # self.moveSolenoid(QUARTER_INCH_SOLENOID_ID)
+
+    def onHalfInchMarble(self, msg):
+        print(f"Detected half-inch marble {MARBLE_MSG_TO_NAME[msg.kind]}")
         
+        sendMsg = SorterServoMsg()
+        sendMsg.name = "halfInch"
+        sendMsg.bin = MARBLE_MSG_TO_BIN[msg.kind]
+        self.sorterServoCommandsPub.publish(sendMsg)
 
-    
+        self.moveSolenoid(HALF_INCH_SOLENOID_ID)
+        print("Sent commands")
 
-    def on_start(self, msg: String) -> None:
-        """
-        Processes start messages sent by the HMI    
-        """
-        pass
+    def on_start(self, msg):
+        self.resetPub.publish(EmptyMsg())
+
+
 
 def main(args=None):
     rclpy.init(args=args)
-
     node = GameController()
-
     rclpy.spin(node)
-
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
+    
     node.destroy_node()
     rclpy.shutdown()
 

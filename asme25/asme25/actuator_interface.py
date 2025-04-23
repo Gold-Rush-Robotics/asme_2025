@@ -1,15 +1,24 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.duration import Duration
+from rclpy.callback_groups import ReentrantCallbackGroup
+
 
 from std_msgs.msg import Empty, Int8
 from sensor_msgs.msg import JointState
-from asme25_msgs.msg import Servo as ServoMsg, Motor as MotorMsg, SorterServo as SorterServoMsg
+from asme25_msgs.msg import Servo as ServoMsg, Motor as MotorMsg, SorterServo as SorterServoMsg, Marble as MarbleMsg
 
 #raspberry pi imports
-import adafruit_pca9685
-import adafruit_tca9548a
+from adafruit_pca9685 import PCA9685
+from adafruit_tca9548a import TCA9548A
+from adafruit_tcs34725 import TCS34725
+from adafruit_blinka.board.raspberrypi import raspi_5
+from adafruit_blinka.microcontroller.generic_linux.lgpio_pin import Pin
+from digitalio import DigitalInOut, Direction
 import board
 import busio
+import numpy as np
+import datetime
 
 from time import sleep
 import signal
@@ -17,11 +26,12 @@ from enum import Enum
 from gpiozero import Button, OutputDevice
 
 I2C = busio.I2C(board.SCL, board.SDA)
-TCA = adafruit_tca9548a.TCA9548A(I2C)
-PCA = adafruit_pca9685.PCA9685(TCA[0])
+TCA = TCA9548A(I2C)
+PCA = PCA9685(TCA[0])
 PCA.frequency = 60
 
 SOLENOID_OUT_TIME = 0.2
+MARBLE_DETECT_RATE = .5
 
 class Servo:
     allServos = []
@@ -47,6 +57,7 @@ class Servo:
         
     def moveManual(self, pos: int):
         self.lastPosition = pos
+        print("Moving servo to " + pos)
         PCA.channels[self.pin].duty_cycle = pos
     
     def move(self, position: str):
@@ -142,11 +153,111 @@ funnel = Motor(4, 5)
 
 barrier = Servo(10, {"home": 0x8888, "forward": 0xFFFF, "backward": 100})
 
-halfInchSolenoid = Solenoid(24)
-quarterInchSolenoid = Solenoid(25)
+halfInchSolenoid = Solenoid(25)
+quarterInchSolenoid = Solenoid(24)
 
-halfInchSorter = Sorter(12, 5500, 6800, 13, 5100, 6200)
-# TODO: Add quarter-inch sorter when we have a quarter-inch track
+halfInchSorter = Sorter(3, 5700, 6650, 6, 5600, 6700)
+quarterInchSorter = Sorter(14, 7450, 8200, 12, 7000, 7600)
+
+
+
+class ColorSensor:
+    def __init__(self, sensorId: int, whiteLightPin: Pin, blueLightPin: Pin, offset: float, node: Node):
+        self.sensor = TCS34725(TCA[sensorId])
+        self.sensor.gain = 16
+        self.sensor.integration_time = 300
+
+        self.whiteLight = DigitalInOut(whiteLightPin)
+        self.blueLight = DigitalInOut(blueLightPin)
+
+        self.whiteLight.direction = Direction.OUTPUT
+        self.blueLight.direction = Direction.OUTPUT
+
+        self.offset = offset
+        self.rosNode = node
+
+    def setBlueLightOn(self, on: bool):
+        # We provide ground for the blue LED, so setting it to false turns it on
+        self.blueLight.value = not on
+    def setWhiteLightOn(self, on: bool):
+        self.whiteLight.value = on
+        
+    def get_rgb(self):
+        data = tuple(
+            self.sensor._read_u16(reg)
+            for reg in (
+                0x16,
+                0x18,
+                0x1A,
+                0x14,
+            )
+        )
+        
+        r, g, b, clear = data
+        
+        if clear == 0:
+            return (0, 0, 0)
+
+        # Each color value is normalized to clear, to obtain int values between 0 and 255.
+        # A gamma correction of 2.5 is applied to each value as well, first dividing by 255,
+        # since gamma is applied to values between 0 and 1
+        red = int(pow((int((r / clear) * 256) / 255), 2.5) * 255)
+        green = int(pow((int((g / clear) * 256) / 255), 2.5) * 255)
+        blue = int(pow((int((b / clear) * 256) / 255), 2.5) * 255)
+
+        # Handle possible 8-bit overflow
+        red = min(red, 255)
+        green = min(green, 255)
+        blue = min(blue, 255)
+        return (red, green, blue)
+
+
+    def checkMarble(self) -> MarbleMsg:
+        print("checkMarble")
+        msg = MarbleMsg()
+
+        self.setWhiteLightOn(False)
+        self.setBlueLightOn(True)
+
+        now = self.rosNode.get_clock().now()
+        while self.rosNode.get_clock().now() - now < Duration(seconds=0.3):
+            # print(f"whhhhhaaa {self.rosNode.get_clock().now() - now}")
+            rclpy.spin_once(self.rosNode)
+        
+        print("checkMarble 2")
+        rgb = self.get_rgb()
+        blue = rgb[2]
+
+        if blue >= 255:
+            print("/checkMarble bn")
+            return None
+        elif blue >= 40:
+            print("/checkMarble bny")
+            msg.kind = MarbleMsg.NYLON
+            return msg
+
+        self.setWhiteLightOn(True)
+        self.setBlueLightOn(False)
+
+        rgb = self.get_rgb()
+        Y = (0.299 * rgb[0]) + (0.587 * rgb[1]) + (0.114 * rgb[2])
+        Pb = 0.564 * (rgb[2] - Y)
+        Pr = 0.713 * (rgb[0] - Y)
+        
+        normal = np.array([ 0.31656525, -0.96532631,  0.81247134 ])
+        
+        decision = normal @ np.array([Y, Pr, Pb]) - self.offset
+
+        if decision < 0:
+           msg.kind = MarbleMsg.BRASS
+        elif decision > 0:
+           msg.kind = MarbleMsg.STEEL
+        else:
+            print("On the plane! Defaulting to none...")
+            return None
+
+        print("/checkMarble")
+        return msg
 
 
 
@@ -158,6 +269,15 @@ publish joint trajectory messages
 class ActuatorInterface(Node):
     def __init__(self):
         super().__init__('actuator_interface')
+
+        self.halfInchMarblePublisher = self.create_publisher(MarbleMsg, "detected_marbles/half_inch", 10)
+        self.quarterInchMarblePublisher = self.create_publisher(MarbleMsg, "detected_marbles/quarter_inch", 10)
+
+        self.halfInchSensor = ColorSensor(7, raspi_5.D26, raspi_5.D16, 27.331479324459327, self)
+        self.quarterInchSensor = ColorSensor(6, raspi_5.D6, raspi_5.D5, 35.331479324459327, self)
+                                             
+        self.halfInchTimer = self.create_timer(MARBLE_DETECT_RATE, self.halfInchCallback, callback_group=ReentrantCallbackGroup())
+        self.quarterInchTimer = self.create_timer(MARBLE_DETECT_RATE, self.quarterInchCallback, callback_group=ReentrantCallbackGroup())
 
         self.servoCommandsSub = self.create_subscription(ServoMsg, 'robot_joints/servo_commands', self.onServoMsg, 10)
         self.servoStatesPub = self.create_publisher(ServoMsg, 'robot_joints/servo_states', 10)
@@ -176,8 +296,23 @@ class ActuatorInterface(Node):
         self.solenoidCommandsSub = self.create_subscription(Int8, "robot_joints/solenoid_commands", self.onSolenoidCommand, 10)
         self.halfSolenoidTimer = self.create_timer(SOLENOID_OUT_TIME, self.halfSolenoidDeactivate, autostart=False)
         self.quarterSolenoidTimer = self.create_timer(SOLENOID_OUT_TIME, self.quarterSolenoidDeactivate, autostart=False)
+        self.halfSolenoidTimer.cancel()
+        self.quarterSolenoidTimer.cancel()
 
         self.checkLimitSwitchesTimer = self.create_timer(.001, self.checkLimitSwitches)
+
+    
+    def halfInchCallback(self):
+        marble = self.halfInchSensor.checkMarble()
+        if marble is not None:
+            self.halfInchMarblePublisher.publish(marble)
+            print("hi")
+    def quarterInchCallback(self):
+        print("q")
+        marble = self.quarterInchSensor.checkMarble()
+        if marble is not None:
+            self.quarterInchMarblePublisher.publish(marble)
+        print("qq")
 
     def onMotorMsg(self, msg):
         if msg.name == "wwerrVertical":
@@ -196,7 +331,6 @@ class ActuatorInterface(Node):
         stateMsg = ServoMsg()
         stateMsg.position = msg.position
 
-
         if msg.name == "wwerrAngle":
             wwerrAngle.moveSmooth(msg.position, msg.speed)
             stateMsg.name = "wwerrAngle"
@@ -206,7 +340,6 @@ class ActuatorInterface(Node):
             wwerrHorizontal.moveSmooth(msg.position, msg.speed)
             stateMsg.name = "wwerrHorizontal"
             self.servoStatesPub.publish(stateMsg)
-
 
         #barrier servo is a special case because it is a continuous servo
         elif msg.name == "barrier":
@@ -222,7 +355,7 @@ class ActuatorInterface(Node):
         if msg.name == "halfInch":
             halfInchSorter.setBin(msg.bin)
         elif msg.name == "quarterInch":
-            pass # TODO
+            quarterInchSorter.setBin(msg.bin)
         else:
             print(f"Sent sorter servo command for nonexistant sorter servo {msg.name}")
 
@@ -230,18 +363,22 @@ class ActuatorInterface(Node):
         solenoid = msg.data
         if solenoid == 0:
             halfInchSolenoid.activate()
-            self.halfSolenoidTimer.reset()
+            if self.halfSolenoidTimer.is_canceled():
+                self.halfSolenoidTimer.reset()
         elif solenoid == 1:
             quarterInchSolenoid.activate()
-            self.quarterSolenoidTimer.reset()
+            if self.quarterSolenoidTimer.is_canceled():
+                self.quarterSolenoidTimer.reset()
         else:
             print("WARNING sent command to activate nonexistant solenoid. Half=0, Quarter=1")
 
     def halfSolenoidDeactivate(self):
         halfInchSolenoid.deactivate()
+        self.halfSolenoidTimer.cancel()
+    
     def quarterSolenoidDeactivate(self):
         quarterInchSolenoid.deactivate()
-
+        self.quarterSolenoidTimer.cancel()
 
     def onResetMsg(self, _: Empty):
         print("-- RESETTING ---")
@@ -285,21 +422,21 @@ class ActuatorInterface(Node):
 
 
 def main(args=None):
-    try:
+    # try:
         rclpy.init(args=args)
         node = ActuatorInterface()
         rclpy.spin(node)
         
         rclpy.shutdown()
 
-    except(KeyboardInterrupt):
-        print("Stopping All")
-        TCA[0].unlock()
+    # except(KeyboardInterrupt):
+    #     print("Stopping All")
+    #     TCA[0].unlock()
 
-        Motor.stopAll()
+    #     Motor.stopAll()
 
-        #stop barrier puller
-        PCA.channels[10].duty_cycle = 0
+    #     #stop barrier puller
+    #     PCA.channels[10].duty_cycle = 0
 
 
 

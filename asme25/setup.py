@@ -23,7 +23,9 @@ setup(
             "actuator_interface = asme25.actuator_interface:main",
             "game_controller = asme25.game_controller:main",
             "computer_vision = asme25.computer_vision:main",
-            "testing = asme25.testing:main"
+            "testing = asme25.testing:main",
+            "color_sensor = asme25.color_sensor:main",
+            "hardware_interface = asme25.hardware_interface:main"
         ],
     },
 )
