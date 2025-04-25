@@ -2,9 +2,9 @@ import rclpy
 from rclpy.node import Node
 from rclpy.time import Duration
 
-from asme25_msgs.msg import Servo as ServoMsg, Motor as MotorMsg, SorterServo as SorterServoMsg, Marble as MarbleMsg
-from asme25_msgs.srv import Reset as ResetSrv
-from std_msgs.msg import Int8, Bool as BoolMsg
+from asme25_msgs.msg import Motor as MotorMsg, SorterServo as SorterServoMsg, Marble as MarbleMsg
+from asme25_msgs.srv import Reset as ResetSrv, Servo as ServoSrv
+from std_msgs.msg import Int8 as Int8Msg, Bool as BoolMsg, UInt16 as UInt16Msg
 
 from adafruit_blinka.board.raspberrypi import raspi_5
 
@@ -14,6 +14,8 @@ import asyncio
 from adafruit_tcs34725 import TCS34725
 from adafruit_tca9548a import TCA9548A
 from adafruit_pca9685 import PCA9685
+from adafruit_vl53l4cd import VL53L4CD # Used on .5 inch, 345
+from adafruit_vl6180x import VL6180X # Used on .25 inch, 012
 from digitalio import DigitalInOut, Direction, Pin, Pull
 
 import numpy as np
@@ -102,7 +104,7 @@ class Servo:
         
     def move_manual(self, pos: int):
         self.last_position = pos
-        # print(f"Moving servo to {pos}")
+        print(f"Moving servo to {pos}")
         self.pca.channels[self.pin].duty_cycle = pos
     
     def move(self, position: str):
@@ -110,6 +112,7 @@ class Servo:
 
     def move_smooth(self, position: str, speed: str):
         goal = self.get_pos(position)
+        print(f"servo.move_smooth, diff is {goal - self.last_position}")
         step = Servo.step
         if goal < self.last_position:
             step = -step
@@ -188,7 +191,7 @@ class HardwareInterface(Node):
 
         self.I2C = busio.I2C(board.SCL, board.SDA)
         self.TCA = TCA9548A(self.I2C)
-        self.PCA = PCA9685(self.TCA[0])
+        self.PCA = PCA9685(self.I2C)
         self.PCA.frequency = 60
         
         if True: # half inch sorting
@@ -208,7 +211,7 @@ class HardwareInterface(Node):
             self.quarter_sorter = Sorter(14, 7450, 8200, 12, 6500, 7600, self.PCA)
 
         if True: # solenoid stuff 
-            self.solenoid_sub = self.create_subscription(Int8, "robot_joints/solenoid_commands", self.solenoid_msg_callback, 10)
+            self.solenoid_sub = self.create_subscription(Int8Msg, "robot_joints/solenoid_commands", self.solenoid_msg_callback, 10)
             self.solenoid_control_tmr = self.create_timer(1/30, self.solenoid_tmr_callback)
             self.solenoid_states = [0, 0]
             self.solenoids = [DigitalInOut(raspi_5.D25), DigitalInOut(raspi_5.D24)]
@@ -223,11 +226,46 @@ class HardwareInterface(Node):
             self.top_limit_switch_publisher = self.create_publisher(BoolMsg, "robot_joints/top_limit_switch", 10)
             self.limit_switch_timer = self.create_timer(.001, self.limit_switch_timer_callback)
             self.wwerr_vertical = Motor(0, 1, self.PCA)
-            self.wwerr_horizontal = Servo(11, {"home": "min", "min": 7250, "max": 9700, "shakingForward": 8300, "shakingBack": 7600}, self.PCA) #tuned 4/10
-            self.wwerr_angle = Servo(15, {"home": "holding", "holding": 4100, "dumping": 5000, "shaking": 4700, "tiltUp":3800}, self.PCA) #tuned 4/10
+            self.wwerr_horizontal = Servo(9, {"home": "min", "min": 7500, "max": 9700, "shakingForward": 8300, "shakingBack": 7600}, self.PCA) #tuned 4/10
+            self.wwerr_angle = Servo(15, {"home": "holding", "holding": 3500, "dumping": 5000, "flat":3900}, self.PCA) #tuned 4/10
 
-        self.sorting_servo_sub = self.create_subscription(SorterServoMsg, "robot_joints/sorter_servos", self.sorter_servo_callback, 10)
-        self.reset_service = self.create_service(ResetSrv, "robot_joints/reset", self.reset_service)
+        self.funnel = Motor(4, 5, self.PCA)
+
+        self.sorting_servo_sub = self.create_subscription(SorterServoMsg, "robot_joints/sorter_servo_commands", self.sorter_servo_callback, 10)
+        self.reset_service = self.create_service(ResetSrv, "robot_joints/reset", self.reset_service_handler)
+        self.servo_service = self.create_service(ServoSrv, "robot_joints/servo_commands", self.servo_service_handler)
+        self.barrier_sub = self.create_subscription(UInt16Msg, "robot_joints/barrier_speed", self.barrier_speed_callback, 10)
+
+        print("Started")
+
+    def servo_service_handler(self, req, res):
+        print("Servo service handler called")
+        match req.name:
+            case "wwerr_angle":
+                servo = self.wwerr_angle
+            case "wwerr_horizontal":
+                servo = self.wwerr_horizontal
+            case _:
+                print(f"Sent servo command to nonexistant servo {req.name}")
+                return
+        
+        servo.move_smooth(req.position, req.speed)
+
+        print("Servo service handler done")
+        return res
+    
+    def motor_callback(self, msg):
+        if msg.name == "wwerr_vertical":
+            self.wwerr_vertical.set_speed(msg.speed, msg.direction)
+            # #double triple check that we don't move while bin is extended
+            # if wwerrHorizontal.lastPosition == wwerrHorizontal.getPos("min") or wwerrHorizontal.lastPosition == wwerrHorizontal.getPos("home"):
+            #     wwerrVertical.setSpeed(msg.speed, msg.direction)
+            # else:
+            #     print("Attempted to move wwerrVertical while bin was extended")
+        elif msg.name == "funnel":
+            self.funnel.set_speed(msg.speed, msg.direction)
+        else:
+            print(f"Sent motor command for nonexistant motor {msg.name}")
         
     def sorter_servo_callback(self, msg: SorterServoMsg):
         if msg.name == "halfInch":
@@ -358,7 +396,7 @@ class HardwareInterface(Node):
             case 6: #exit state
                 pass
     
-    def solenoid_msg_callback(self, msg:Int8):
+    def solenoid_msg_callback(self, msg: Int8Msg):
         sol_num = msg.data
         if sol_num not in [0, 1]: return
         if self.solenoid_states[sol_num] == 0:
@@ -393,12 +431,16 @@ class HardwareInterface(Node):
                             self.quarter_color_sensor_state_entered = self.get_clock().now()
                     self.solenoid_states[i] = 0
 
-    def reset_service(self, _, response):
+    def barrier_speed_callback(self, msg: UInt16Msg):
+        self.PCA.channels[10].duty_cycle = msg.data
+
+    def reset_service_handler(self, _, response):
         print("-- RESETTING ---")
         Motor.stop_all(self.PCA)
+        print("- Stopped motors")
 
         if (not self.bottom_limit_switch.is_pressed()):
-            self.wwerr_angle.move("tiltUp")
+            print("- Bottom limit switch isn't pressed, pulling in wwerr-wwerr...")
             self.wwerr_angle.move("holding")
             self.wwerr_horizontal.move("min")
             # Let the horizontal box move back in before we start moving down
@@ -409,8 +451,10 @@ class HardwareInterface(Node):
         
         while (not self.bottom_limit_switch.is_pressed()):
             rclpy.spin_once(self, timeout_sec=0)
+        print("- wwerr-wwerr at bottom")
         
         self.wwerr_vertical.stop()
+        self.wwerr_angle.move("flat", "slow")
         self.wwerr_horizontal.move_smooth("max", "slow")
 
         print("--- RESET COMPLETE ---")

@@ -12,10 +12,10 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Marble.msg"
-  "msg/Servo.msg"
   "msg/SorterServo.msg"
   "msg/Motor.msg"
   "srv/Reset.srv"
+  "srv/Servo.srv"
   DEPENDENCIES std_msgs
 )
 

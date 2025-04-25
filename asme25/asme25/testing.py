@@ -103,7 +103,6 @@ class Testing(Node):
         #     #spin once to allow ros to still receive messages
         #     rclpy.spin_once(self)
 
-        
         # self.moveMotor("wwerrVertical", 0x8000, Motor.UP)
 
         # #wait for wwerr to be up
