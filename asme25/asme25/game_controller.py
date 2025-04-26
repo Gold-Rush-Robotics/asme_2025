@@ -10,8 +10,6 @@ from asyncio import Future
 
 
 
-HALF_INCH_SOLENOID_ID = 0
-QUARTER_INCH_SOLENOID_ID = 1
 MARBLE_MSG_TO_BIN = {
     MarbleMsg.BRASS: 3,
     MarbleMsg.NYLON: 1,
@@ -24,20 +22,12 @@ MARBLE_MSG_TO_NAME = {
 }
 
 
-class Job:
-    def __init__(self, cb):
-        self.cb = cb
-
-    def subscribe(self, msg):
-        self.cb(msg)
-
-
 
 class GameController(Node):
     def __init__(self):
         super().__init__('game_controller')
 
-        self.hmi_start_stop_sub = self.create_subscription(StringMsg, 'hmi_start_stop', self.on_start_stop, 10)
+        self.hmi_start_stop_sub = self.create_subscription(StringMsg, 'hmi_start_stop', self.on_start, 10)
         self.quarter_inch_sub = self.create_subscription(MarbleMsg, "quarter/new_marble", self.on_new_quarter_inch_marble, 10)
         self.half_inch_sub = self.create_subscription(MarbleMsg, "half/new_marble", self.on_new_half_inch_marble, 10)
         self.top_limit_switch_sub = self.create_subscription(BoolMsg, "robot_joints/top_limit_switch", self.on_top_limit_switch, 10)
@@ -51,21 +41,16 @@ class GameController(Node):
         self.servo_commands = self.create_client(ServoSrv, "robot_joints/servo_commands")
 
         self.game_loop_timer = self.create_timer(3, self.game_loop, autostart=False)
+        self.startup_timer = self.create_timer(1/30, self.startup)
 
         self.top_limit_switch_pressed = False
         self.bottom_limit_switch_pressed = False
         self.game_loop_state = 0
+        self.startup_state = 0
+        self.startup_delay_start = 0
+        self.startup_current_servo_future = None
 
         print("Started")
-    
-    def ros_sleep(self, secs: float):
-        start = self.get_clock().now()
-        while self.get_clock().now() < start + Duration(seconds=secs):
-            rclpy.spin_once(self, timeout_sec=0)
-    def wait_for_future(self, future: Future):
-        while not future.done():
-            print("Looping while future completes...")
-            rclpy.spin_once(self, timeout_sec=0)
 
     def on_top_limit_switch(self, msg):
         self.top_limit_switch_pressed = msg.data
@@ -85,12 +70,6 @@ class GameController(Node):
         req.position = position
         req.speed = speed
         return self.servo_commands.call_async(req)
-    def move_servo_async(self, name: str, position: str, speed: str) -> Future:
-        req = ServoSrv.Request()
-        req.name = name
-        req.position = position
-        req.speed = speed
-        self.servo_commands.call_async(req)
     def move_motor(self, name: str, speed: int, direction: int):
         msg = MotorMsg()
         msg.name = name
@@ -106,7 +85,7 @@ class GameController(Node):
         send_msg.bin = MARBLE_MSG_TO_BIN[msg.kind]
         self.sorter_servo_commands.publish(send_msg)
 
-        self.move_solenoid(QUARTER_INCH_SOLENOID_ID)
+        self.move_solenoid(1)
 
     def on_new_half_inch_marble(self, msg):
         print(f"Detected half-inch marble {MARBLE_MSG_TO_NAME[msg.kind]}")
@@ -116,10 +95,11 @@ class GameController(Node):
         send_msg.bin = MARBLE_MSG_TO_BIN[msg.kind]
         self.sorter_servo_commands.publish(send_msg)
 
-        self.move_solenoid(HALF_INCH_SOLENOID_ID)
-        print("Sent commands")
+        self.move_solenoid(0)
 
-    def on_start_stop(self, msg):
+    def on_start(self, msg):
+        self.startup_state = 1
+    def startup(self):
         """
         - Pull barrier out
         - Sleep for a bit to let barrier move & marbles fall
@@ -131,30 +111,47 @@ class GameController(Node):
         - Dump wwerr-wwerr
         - Start game loop
         """
-        def stage1():
-            print("hi")
-            msg = UInt16Msg()
-            msg.data = 10_000
-            self.barrier.publish(msg)
-            self.ros_sleep(2)
-            msg = UInt16Msg()
-            msg.data = 0
-            self.barrier.publish(msg)
-            print("wow")
-            self.move_servo("wwerr_horizontal", "min", "slow").add_done_callback(stage2)
-            print("bruh")
+        match self.startup_state:
+            case 0:
+                return
+            case 1:
+                msg = UInt16Msg()
+                msg.data = 10_000
+                self.barrier.publish(msg)
+                self.startup_delay_start = self.get_clock().now()
+            case 2:
+                if self.get_clock().now() - self.startup_delay_start <= Duration(seconds=2):
+                    return
+            case 3:
+                msg = UInt16Msg()
+                msg.data = 0
+                self.barrier.publish(msg)
+                self.startup_current_servo_future = self.move_servo("wwerr_horizontal", "min", "slow")
+            case 4:
+                if not self.startup_current_servo_future.done():
+                    return
+            case 5:
+                self.startup_current_servo_future = self.move_servo("wwerr_angle", "holding", "slow")
+            case 6:
+                if not self.startup_current_servo_future.done():
+                    return
+            case 7:
+                self.startup_current_servo_future = self.move_motor("wwerr_vertical", 0x8000, MotorMsg.UP)
+            case 8:
+                if not self.top_limit_switch_pressed:
+                    return
+            case 9:
+                self.move_motor("funnel", 0x4000, MotorMsg.UP)
+                self.startup_current_servo_future = self.move_servo("wwerr_angle", "dumping", "slow")
+            case 10:
+                if not self.startup_current_servo_future.done():
+                    return
+            case 11:
+                self.game_loop_timer.reset()
+                self.startup_state = 0
+                return
 
-        def stage2():
-            self.move_servo("wwerr_angle", "holding", "slow")
-            self.move_motor("wwerr_vertical", 0x8000, MotorMsg.UP)
-            while not self.top_limit_switch_pressed:
-                rclpy.spin_once(self, timeout_sec=0)
-            print("neat")
-
-            self.move_motor("funnel", 0x4000, MotorMsg.UP)
-            self.move_servo("wwerr_angle", "dumping", "slow")
-            self.game_loop_timer.reset()
-            print("cool")
+        self.startup_state += 1
     
     def game_loop(self):
         if self.game_loop_state % 2 == 0:
@@ -164,7 +161,7 @@ class GameController(Node):
             pos = "min"
             speed = "slow"
 
-        self.move_servo_async("wwerr_horizontal", pos, speed)
+        self.move_servo("wwerr_horizontal", pos, speed)
 
         if self.game_loop_state == 2:
             self.move_motor("funnel", 0x4000, MotorMsg.DOWN)

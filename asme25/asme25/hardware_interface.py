@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.time import Duration
 
-from asme25_msgs.msg import Motor as MotorMsg, SorterServo as SorterServoMsg, Marble as MarbleMsg
+from asme25_msgs.msg import Motor as MotorMsg, SorterServo as SorterServoMsg, Marble as MarbleMsg, TimeOfFlight as TimeOfFlightMsg
 from asme25_msgs.srv import Reset as ResetSrv, Servo as ServoSrv
 from std_msgs.msg import Int8 as Int8Msg, Bool as BoolMsg, UInt16 as UInt16Msg
 
@@ -201,6 +201,7 @@ class HardwareInterface(Node):
             self.half_color = ColorSensor(whiteLightPin=raspi_5.D26, blueLightPin=raspi_5.D16, offset=33.331479324459327, i2c=self.TCA[7])
             self.half_pub = self.create_publisher(MarbleMsg, "half/new_marble", 10)
             self.half_sorter = Sorter(3, 5700, 6550, 6, 5000, 6500, self.PCA)
+            self.half_tof = self.create_publisher(TimeOfFlightMsg, "half/tof", 10)
 
         if True: # quarter inch sorting
             self.tmr_quarter_color_sensor = self.create_timer(1/30, self.quarter_color_sensor_tmr_callback)
@@ -209,6 +210,7 @@ class HardwareInterface(Node):
             self.quarter_color = ColorSensor(whiteLightPin=raspi_5.D6, blueLightPin=raspi_5.D5, offset=33.331479324459327, i2c=self.TCA[6])
             self.quarter_pub = self.create_publisher(MarbleMsg, "quarter/new_marble", 10)
             self.quarter_sorter = Sorter(14, 7450, 8200, 12, 6500, 7600, self.PCA)
+            self.quarter_tof = self.create_publisher(TimeOfFlightMsg, "quarter/tof", 10)
 
         if True: # solenoid stuff 
             self.solenoid_sub = self.create_subscription(Int8Msg, "robot_joints/solenoid_commands", self.solenoid_msg_callback, 10)

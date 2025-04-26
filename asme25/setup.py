@@ -25,7 +25,8 @@ setup(
             "computer_vision = asme25.computer_vision:main",
             "testing = asme25.testing:main",
             "color_sensor = asme25.color_sensor:main",
-            "hardware_interface = asme25.hardware_interface:main"
+            "hardware_interface = asme25.hardware_interface:main",
+            "dummy = asme25.dummy:main"
         ],
     },
 )

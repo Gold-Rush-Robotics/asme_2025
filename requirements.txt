@@ -1,0 +1,7 @@
+adafruit-blinka
+adafruit-circuitpython-tcs34725
+adafruit-circuitpython-tca9548a
+adafruit-circuitpython-pca9685
+adafruit-circuitpython-vl53l4cd
+adafruit-circuitpython-vl6180x
+numpy

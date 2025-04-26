@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Marble.msg"
   "msg/SorterServo.msg"
   "msg/Motor.msg"
+  "msg/TimeOfFlight.msg"
   "srv/Reset.srv"
   "srv/Servo.srv"
   DEPENDENCIES std_msgs
